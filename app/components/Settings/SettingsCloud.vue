@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { dbNuke } from "~/utils/db/local";
 const showNukeConfirm = ref(false);
 async function nukeData() {
-  dbNuke();
   await $fetch("/api/nuke");
   showNukeConfirm.value = false;
   window.location.reload();
