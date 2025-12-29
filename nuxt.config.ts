@@ -1,7 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
 
-const appId = "skeleton";
-
 export default defineNuxtConfig({
   future: {
     compatibilityVersion: 4,

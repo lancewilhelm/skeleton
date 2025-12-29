@@ -1,13 +1,12 @@
-import { useSyncStore } from "~/stores/sync";
-import { debounce } from "../debounce";
+/**
+ * Legacy sync debounce helper.
+ *
+ * Settings sync is now intentionally lightweight:
+ * - pull settings once on app load (when logged in)
+ * - push settings only when they change (in the settings stores)
+ *
+ * This file is kept as a no-op placeholder to avoid build breaks in case
+ * older code or downstream templates still import it.
+ */
 
-const DEBOUNCE_MS = 500;
-
-const _triggerSync = () => {
-  const sync = useSyncStore();
-  if (!sync.isSyncing) {
-    sync.sync();
-  }
-};
-
-export const triggerDebouncedSync = debounce(_triggerSync, DEBOUNCE_MS);
+export const triggerDebouncedSync = () => {};

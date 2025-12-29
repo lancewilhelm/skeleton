@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-import { v4 as uuidv4 } from "uuid";
+
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
 // Users table for better-auth
@@ -83,30 +83,9 @@ export const globalSettings = sqliteTable("global_settings", {
     .$defaultFn(() => new Date()),
 });
 
-// KNOWLEDGE TABLE
-export const knowledge = sqliteTable("knowledge", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => uuidv4()),
-  name: text("name").notNull().unique(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  provider: text("provider").notNull(),
-  documents: integer("documents").notNull(),
-  chunks: integer("chunks").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
-
 // TYPE
 export type InsertUserSettings = InferInsertModel<typeof userSettings>;
 export type InsertGlobalSettings = InferInsertModel<typeof globalSettings>;
 
 export type SelectUserSettings = InferSelectModel<typeof userSettings>;
 export type SelectGlobalSettings = InferSelectModel<typeof globalSettings>;
-export type SelectKnowledge = InferSelectModel<typeof knowledge>;

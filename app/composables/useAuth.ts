@@ -73,16 +73,14 @@ export function useAuth() {
     // Reset all stores
     const userSettingsStore = useUserSettingsStore();
     const globalSettingsStore = useGlobalSettingsStore();
-    const syncStore = useSyncStore();
     const uiStore = useUiStore();
     userSettingsStore.$reset();
     globalSettingsStore.$reset();
-    syncStore.$reset();
     uiStore.$reset();
 
     // Clear the cookies
     const storesToClear = [
-      "skeleton.sync",
+      "skeleton.userSettings",
       "skeleton.globalSettings",
       "skeleton.ui",
     ];

@@ -1,5 +1,4 @@
 import { defineStore } from "pinia";
-import { triggerDebouncedSync } from "~/utils/sync/debounce";
 
 export interface GlobalSettings {
   allowRegistration: boolean;
@@ -17,52 +16,107 @@ function getDefaultSettings(): GlobalSettings {
   };
 }
 
-// async function adminCheck() {
-//   const { user } = useAuth();
-//   if (user.value?.role !== "admin") {
-//     return false;
-//   }
-//   return true;
-// }
+type GlobalSettingsApiGetResponse = {
+  success: boolean;
+  data?: {
+    globalSettings: {
+      settings: unknown;
+      updatedAt: string | number | Date;
+    } | null;
+  };
+};
 
+type GlobalSettingsApiPutResponse = {
+  success: boolean;
+  message?: string;
+};
+
+/**
+ * Global settings store:
+ * - Pull once on app load (when logged in) via `pullLatest()`
+ * - Push only on local admin changes via `updateSettings()`
+ *
+ * This is intentionally lightweight for a starter template.
+ */
 export const useGlobalSettingsStore = defineStore(
   "globalSettings",
   () => {
     const settings = ref<GlobalSettings>(getDefaultSettings());
-    async function updateSettings(updated: Partial<GlobalSettings>) {
-      // if (!(await adminCheck())) return;
-
-      // Update settings
-      settings.value = { ...settings.value, ...updated };
-
-      // Update sync status
-      updatedAt.value = new Date();
-      synced.value = false;
-
-      // Trigger sync
-      triggerDebouncedSync();
-    }
-
-    const synced = ref(true);
-    async function setSynced(value: boolean) {
-      // await adminCheck();
-      synced.value = value;
-    }
-
     const updatedAt = ref<Date>(new Date(0));
+
+    /**
+     * Apply settings coming from the server WITHOUT triggering a push.
+     * This avoids “pull triggers push” loops.
+     */
+    function applyRemoteSettings(remote: unknown, remoteUpdatedAt?: unknown) {
+      settings.value = {
+        ...getDefaultSettings(),
+        ...(remote as Partial<GlobalSettings>),
+      };
+
+      const d =
+        remoteUpdatedAt instanceof Date
+          ? remoteUpdatedAt
+          : typeof remoteUpdatedAt === "string" ||
+              typeof remoteUpdatedAt === "number"
+            ? new Date(remoteUpdatedAt)
+            : new Date();
+      updatedAt.value = Number.isNaN(d.getTime()) ? new Date() : d;
+    }
+
+    /**
+     * Pull the latest global settings (requires being logged in).
+     * Safe to call multiple times; it just overwrites local cache with server state.
+     */
+    async function pullLatest() {
+      const { session } = useAuth();
+      if (!session.value) return;
+
+      const res = await $fetch<GlobalSettingsApiGetResponse>("/api/settings", {
+        method: "GET",
+      });
+
+      if (!res?.success) return;
+
+      const remote = res.data?.globalSettings;
+      if (!remote) return;
+
+      applyRemoteSettings(remote.settings, remote.updatedAt);
+    }
+
+    /**
+     * Update settings locally and push them to the server.
+     * The server enforces admin/owner; non-admin calls will get 403.
+     */
+    async function updateSettings(updated: Partial<GlobalSettings>) {
+      if (Object.keys(updated).length === 0) return;
+
+      settings.value = { ...settings.value, ...updated };
+      updatedAt.value = new Date();
+
+      // Convenience: avoid pushing if not admin on the client (server still enforces)
+      const { isAdmin } = useAuth();
+      if (!isAdmin.value) return;
+
+      await $fetch<GlobalSettingsApiPutResponse>("/api/settings/global", {
+        method: "PUT",
+        body: {
+          settings: settings.value,
+        },
+      });
+    }
 
     function $reset() {
       settings.value = getDefaultSettings();
       updatedAt.value = new Date(0);
-      synced.value = true;
     }
 
     return {
       settings,
       updatedAt,
+      applyRemoteSettings,
+      pullLatest,
       updateSettings,
-      synced,
-      setSynced,
       $reset,
     };
   },
