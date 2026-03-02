@@ -1,43 +1,84 @@
 <script setup lang="ts">
+import { getLoginErrorMessage } from "~/utils/authErrors";
+import { logger } from "~/utils/logger";
+
 definePageMeta({
-    auth: {
-        only: "guest",
-        redirectUserTo: "/",
-    },
+  auth: {
+    only: "guest",
+    redirectUserTo: "/",
+  },
 });
 useHead({
-    title: "Login",
+  title: "Login",
 });
 const email = ref("");
 const password = ref("");
+const errorMessage = ref("");
+const isSubmitting = ref(false);
+
+let errorTimeout: ReturnType<typeof setTimeout> | undefined;
+
+function showError(message: string) {
+  errorMessage.value = message;
+  if (errorTimeout) clearTimeout(errorTimeout);
+  errorTimeout = setTimeout(() => {
+    errorMessage.value = "";
+  }, 5000);
+}
+
+onBeforeUnmount(() => {
+  if (errorTimeout) clearTimeout(errorTimeout);
+});
 
 async function handleSubmit() {
-    const { signIn, fetchSession } = useAuth();
+  if (isSubmitting.value) return;
+  errorMessage.value = "";
+
+  if (!email.value.trim()) {
+    showError("Please enter your email.");
+    return;
+  }
+  if (!password.value) {
+    showError("Please enter your password.");
+    return;
+  }
+
+  const { signIn, fetchSession } = useAuth();
+  isSubmitting.value = true;
+  try {
     const { error } = await signIn.email({
-        email: email.value,
-        password: password.value,
+      email: email.value.trim(),
+      password: password.value,
     });
 
     if (error) {
-        alert("Login failed:");
-        return;
+      logger.error({ error }, "Login failed");
+      showError(getLoginErrorMessage(error));
+      return;
     }
 
     // Fetch the session
     await fetchSession();
 
-    // Settings sync is now:
-    // - pulled once on app load when logged in
-    // - pushed on change from the settings stores
-
-    // Load the theme
+    // Pull latest settings immediately after login to avoid stale theme/preferences.
     const userSettingsStore = useUserSettingsStore();
+    const globalSettingsStore = useGlobalSettingsStore();
+    await Promise.all([
+      userSettingsStore.pull(),
+      globalSettingsStore.pullLatest(),
+    ]);
+
     if (userSettingsStore.settings.theme) {
-        loadTheme(userSettingsStore.settings.theme);
+      await loadTheme(userSettingsStore.settings.theme);
     }
 
-    // Navigate to the home page
     return navigateTo("/");
+  } catch (error) {
+    logger.error({ error }, "Login failed");
+    showError(getLoginErrorMessage(error));
+  } finally {
+    isSubmitting.value = false;
+  }
 }
 </script>
 
@@ -67,10 +108,13 @@ async function handleSubmit() {
                 class="border border-(--sub-color) px-2 py-1 rounded text-[12pt] w-[250px]"
             />
             <button
-                class="bg-(--main-color) text-(--bg-color) rounded px-2 py-1 cursor-pointer hover:opacity-80 active:opacity-60"
+                class="cursor-pointer rounded bg-(--main-color) px-2 py-1 text-(--bg-color) hover:opacity-80 active:opacity-60 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isSubmitting"
             >
-                login
+                Login
             </button>
+
+            <AuthFormError :message="errorMessage" />
         </form>
     </div>
 </template>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { getRegisterErrorMessage } from "~/utils/authErrors";
+import { logger } from "~/utils/logger";
+
 definePageMeta({
   auth: {
     only: "guest",
@@ -12,30 +15,85 @@ useHead({
 const email = ref("");
 const password = ref("");
 const verifyPassword = ref("");
+const errorMessage = ref("");
+const isSubmitting = ref(false);
+
+let errorTimeout: ReturnType<typeof setTimeout> | undefined;
+
+function showError(message: string) {
+  errorMessage.value = message;
+  if (errorTimeout) clearTimeout(errorTimeout);
+  errorTimeout = setTimeout(() => {
+    errorMessage.value = "";
+  }, 5000);
+}
+
+onBeforeUnmount(() => {
+  if (errorTimeout) clearTimeout(errorTimeout);
+});
 
 async function handleSubmit() {
+  if (isSubmitting.value) return;
+  errorMessage.value = "";
+
+  if (!email.value.trim()) {
+    showError("Please enter your email.");
+    return;
+  }
+  if (!password.value) {
+    showError("Please enter a password.");
+    return;
+  }
+  if (password.value.length < 6) {
+    showError("Password must be at least 6 characters.");
+    return;
+  }
+  if (!verifyPassword.value) {
+    showError("Please retype your password.");
+    return;
+  }
   if (password.value !== verifyPassword.value) {
-    alert("Passwords do not match");
+    showError("Passwords do not match.");
     return;
   }
 
   const { signUp, fetchSession } = useAuth();
-  const { error } = await signUp.email({
-    email: email.value,
-    password: password.value,
-    name: "",
-  });
+  isSubmitting.value = true;
+  try {
+    const { error } = await signUp.email({
+      email: email.value.trim(),
+      password: password.value,
+      name: "",
+    });
 
-  if (error) {
-    console.log(error);
-    alert(`Error signing up: ${error.message}. ${error.details.body.message}`);
-    return;
+    if (error) {
+      logger.error({ error }, "Error signing up");
+      showError(getRegisterErrorMessage(error));
+      return;
+    }
+
+    // Fetch the session
+    await fetchSession();
+
+    // Pull settings immediately after register/login so theme + prefs apply without a reload.
+    const userSettingsStore = useUserSettingsStore();
+    const globalSettingsStore = useGlobalSettingsStore();
+    await Promise.all([
+      userSettingsStore.pull(),
+      globalSettingsStore.pullLatest(),
+    ]);
+
+    if (userSettingsStore.settings.theme) {
+      await loadTheme(userSettingsStore.settings.theme);
+    }
+
+    return navigateTo("/");
+  } catch (error) {
+    logger.error({ error }, "Error signing up");
+    showError(getRegisterErrorMessage(error));
+  } finally {
+    isSubmitting.value = false;
   }
-
-  // Fetch the session
-  await fetchSession();
-
-  return navigateTo("/");
 }
 </script>
 
@@ -79,10 +137,13 @@ async function handleSubmit() {
         ]"
       />
       <button
-        class="bg-(--main-color) text-(--bg-color) rounded px-2 py-1 hover:opacity-80 active:opacity-60"
+        class="rounded bg-(--main-color) px-2 py-1 text-(--bg-color) hover:opacity-80 active:opacity-60 disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="isSubmitting"
       >
-        login
+        Register
       </button>
+
+      <AuthFormError :message="errorMessage" />
     </form>
   </div>
 </template>
